@@ -1,28 +1,33 @@
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 
 np.random.seed(42)  # Ensures reproducibility
 
 def fitness_function(C, g, x, c):
     a = (1 - (g / C)) ** 2
     p = 1 - ((g / C) * x)
+    if p == 0:
+        p = 1e-6  # Prevent division by zero
+
     d1i = (0.38 * C * a) / p
 
     a2 = 173 * (x ** 2)
-    ri1 = np.sqrt((x - 1) + (x - 1) ** 2 + ((16 * x) / c))
+    ri1_val = (x - 1) + (x - 1) ** 2 + ((16 * x) / c)
+    ri1 = np.sqrt(max(0, ri1_val))  # Prevent invalid sqrt
 
     d2i = a2 * ri1
 
     return d1i + d2i
 
-def fairness_penalty(green_times, congestion):
+def fairness_penalty(green_times, congestion, cycle_time):
+    # Penalize only if green times are not aligned with congestion
     penalty = 0
     for i in range(len(green_times)):
         for j in range(i + 1, len(green_times)):
-            congestion_diff = abs(congestion[i] - congestion[j])
-            if congestion_diff < 0.1:
-                penalty += abs(green_times[i] - green_times[j])
-    return penalty * 5
+            ideal_diff = (congestion[i] - congestion[j]) * cycle_time
+            actual_diff = green_times[i] - green_times[j]
+            penalty += abs(actual_diff - ideal_diff)
+    return penalty * 0.1  # Reduced penalty weight
 
 def initialize_population(pop_size, num_lights, green_min, green_max, cycle_time, cars):
     population = []
@@ -36,14 +41,23 @@ def initialize_population(pop_size, num_lights, green_min, green_max, cycle_time
                 fitness_function(cycle_time, green_times[i], normalized_cars[i], road_capacity[i])
                 for i in range(num_lights)
             ])
-            fairness = fairness_penalty(green_times, normalized_cars)
+            fairness = fairness_penalty(green_times, normalized_cars, cycle_time)
             total_delay += fairness
-            population.append((green_times, total_delay))
+            if not np.isnan(total_delay):
+                population.append((green_times, total_delay))
     return sorted(population, key=lambda x: x[1])
 
 def roulette_wheel_selection(population, total_delays, beta):
+    total_delays = np.array(total_delays)
+    if np.any(np.isnan(total_delays)) or np.any(np.isinf(total_delays)):
+        raise ValueError("Delays contain invalid values.")
+
     worst_delay = max(total_delays)
-    probabilities = np.exp(-beta * np.array(total_delays) / worst_delay)
+    probabilities = np.exp(-beta * total_delays / worst_delay)
+
+    if np.sum(probabilities) == 0 or np.isnan(np.sum(probabilities)):
+        raise Exception("Probabilities contain NaN or sum to zero.")
+
     probabilities /= np.sum(probabilities)
     return np.random.choice(len(population), p=probabilities)
 
@@ -82,8 +96,12 @@ def genetic_algorithm(pop_size, num_lights, max_iter, green_min, green_max, cycl
         new_population = []
 
         while len(new_population) < pop_size:
-            i1 = roulette_wheel_selection(population, total_delays, beta)
-            i2 = roulette_wheel_selection(population, total_delays, beta)
+            try:
+                i1 = roulette_wheel_selection(population, total_delays, beta)
+                i2 = roulette_wheel_selection(population, total_delays, beta)
+            except Exception as e:
+                print(f"[Warning] Selection issue: {e}")
+                break
 
             parent1, parent2 = population[i1][0], population[i2][0]
             child1, child2 = crossover(parent1, parent2, num_lights)
@@ -96,9 +114,10 @@ def genetic_algorithm(pop_size, num_lights, max_iter, green_min, green_max, cycl
                         fitness_function(cycle_time, child[i], normalized_cars[i], road_capacity[i])
                         for i in range(num_lights)
                     ])
-                    fairness = fairness_penalty(child, normalized_cars)
+                    fairness = fairness_penalty(child, normalized_cars, cycle_time)
                     total_delay += fairness
-                    new_population.append((child, total_delay))
+                    if not np.isnan(total_delay):
+                        new_population.append((child, total_delay))
 
         while len(new_population) < pop_size:
             i = np.random.randint(0, len(population))
@@ -109,9 +128,10 @@ def genetic_algorithm(pop_size, num_lights, max_iter, green_min, green_max, cycl
                     fitness_function(cycle_time, individual[i], normalized_cars[i], road_capacity[i])
                     for i in range(num_lights)
                 ])
-                fairness = fairness_penalty(individual, normalized_cars)
+                fairness = fairness_penalty(individual, normalized_cars, cycle_time)
                 total_delay += fairness
-                new_population.append((individual, total_delay))
+                if not np.isnan(total_delay):
+                    new_population.append((individual, total_delay))
 
         population += new_population
         population = sorted(population, key=lambda x: x[1])[:pop_size]
@@ -129,12 +149,15 @@ def optimize_traffic(cars):
     max_iter = 25
     green_min = 10
     green_max = 60
-    cycle_time = 160 - 12
+    cycle_time = 160 - 12  # cycle time minus yellow/all-red time
     mutation_rate = 0.02
     pinv = 0.2
     beta = 8
 
-    best_sol, best_delays = genetic_algorithm(pop_size, num_lights, max_iter, green_min, green_max, cycle_time, mutation_rate, pinv, beta, cars)
+    best_sol, best_delays = genetic_algorithm(
+        pop_size, num_lights, max_iter, green_min, green_max,
+        cycle_time, mutation_rate, pinv, beta, cars
+    )
 
     result = {
         'north': int(best_sol[0][0]),
@@ -150,3 +173,8 @@ def optimize_traffic(cars):
     print(f'East Green Time = {result["east"]} seconds')
 
     return result
+
+# Example test
+if __name__ == "__main__":
+    cars = [30, 25, 20, 35]  # Adjust to test different congestions
+    optimize_traffic(cars)

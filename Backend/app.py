@@ -1,8 +1,9 @@
 import os
-from flask import Flask, request, jsonify
-from detect import detect_cars  
-from algo import optimize_traffic  
-from flask_cors import CORS  
+
+from algo import optimize_traffic
+from detect import detect_cars
+from flask import Flask, jsonify, request
+from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)
@@ -59,3 +60,9 @@ def upload_files():
     except Exception as e:
         print(f"Exception: {str(e)}")
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
+
+if __name__ == '__main__':
+    if not os.path.isdir('uploads'):
+        os.mkdir('uploads')
+    app.run(debug=True)
