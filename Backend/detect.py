@@ -1,10 +1,12 @@
 import os
-from ultralytics import YOLO
-import cv2 as cv
 import time
 from collections import deque
+
+import cv2 as cv
 import numpy as np
 from scipy.signal import find_peaks
+from ultralytics import YOLO
+
 
 def detect_cars(video_file):
     # Green color for vehicle detection
@@ -24,7 +26,8 @@ def detect_cars(video_file):
 
     # Create full screen display window
     cv.namedWindow('frame', cv.WINDOW_NORMAL)
-    cv.setWindowProperty('frame', cv.WND_PROP_FULLSCREEN, cv.WINDOW_FULLSCREEN)
+    cv.resizeWindow('frame', 960, 540)
+    cv.moveWindow('frame', 480, 270)
 
     # To keep track of vehicle counts over time
     car_counts = deque()  # (timestamp, count)
