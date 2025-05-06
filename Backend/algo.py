@@ -143,36 +143,91 @@ def genetic_algorithm(pop_size, num_lights, max_iter, green_min, green_max, cycl
 
     return best_sol, best_delays
 
-def optimize_traffic(cars):
+def optimize_traffic(traffic_data):
     pop_size = 400
     num_lights = 4
     max_iter = 25
     green_min = 10
     green_max = 60
-    cycle_time = 160 - 12  # cycle time minus yellow/all-red time
+    total_cycle_time = 160 - 12  # total available green time in a cycle
     mutation_rate = 0.02
     pinv = 0.2
     beta = 8
 
-    best_sol, best_delays = genetic_algorithm(
-        pop_size, num_lights, max_iter, green_min, green_max,
-        cycle_time, mutation_rate, pinv, beta, cars
-    )
+    directions = ['north', 'south', 'west', 'east']
+    vehicle_counts = []
+    ambulance_direction = None
 
-    result = {
-        'north': int(best_sol[0][0]),
-        'south': int(best_sol[0][1]),
-        'west': int(best_sol[0][2]),
-        'east': int(best_sol[0][3])
-    }
+    # Extract vehicle counts and find if ambulance is present
+    for dir in directions:
+        entry = next((item for item in traffic_data if item['direction'] == dir), None)
+        if entry:
+            vehicle_counts.append(entry['vehicle_count'])
+            if entry.get('ambulance_detected'):
+                ambulance_direction = dir
+        else:
+            vehicle_counts.append(0)
 
+    result = {}
+
+    if ambulance_direction:
+        # Give full 60 seconds green to ambulance direction
+        fixed_green = {d: 0 for d in directions}
+        fixed_green[ambulance_direction] = 60
+        remaining_time = total_cycle_time - 60
+
+        # Prepare input for other directions
+        other_dirs = [d for d in directions if d != ambulance_direction]
+        other_counts = [vehicle_counts[directions.index(d)] for d in other_dirs]
+
+        # Optimize for remaining directions
+        best_sol, _ = genetic_algorithm(
+            pop_size=pop_size,
+            num_lights=3,
+            max_iter=max_iter,
+            green_min=green_min,
+            green_max=green_max,
+            cycle_time=remaining_time,
+            mutation_rate=mutation_rate,
+            pinv=pinv,
+            beta=beta,
+            cars=other_counts
+        )
+
+        # Fill result
+        for i, d in enumerate(other_dirs):
+            result[d] = {
+                "green_time": int(best_sol[0][i])
+            }
+        # Add ambulance direction with message
+        result[ambulance_direction] = {
+            "green_time": 60,
+            "message": "Ambulance detected"
+        }
+
+    else:
+        # No ambulance, optimize for all directions
+        best_sol, _ = genetic_algorithm(
+            pop_size, num_lights, max_iter, green_min, green_max,
+            total_cycle_time, mutation_rate, pinv, beta, vehicle_counts
+        )
+
+        for i, d in enumerate(directions):
+            result[d] = {
+                "green_time": int(best_sol[0][i])
+            }
+
+    # Debug output
     print('Optimal Solution:')
-    print(f'North Green Time = {result["north"]} seconds')
-    print(f'South Green Time = {result["south"]} seconds')
-    print(f'West Green Time = {result["west"]} seconds')
-    print(f'East Green Time = {result["east"]} seconds')
+    for d in directions:
+        if "message" in result[d]:
+            print(f'{d.capitalize()} Green Time = {result[d]["green_time"]} seconds ({result[d]["message"]})')
+        else:
+            print(f'{d.capitalize()} Green Time = {result[d]["green_time"]} seconds')
 
     return result
+
+
 
 # Example test
 if __name__ == "__main__":

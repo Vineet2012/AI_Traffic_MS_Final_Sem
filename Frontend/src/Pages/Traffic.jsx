@@ -225,7 +225,7 @@ export default function TrafficPage() {
                     textAlign: "center",
                   }}
                 >
-                  Traffic Signal Adjustment Recommendations
+                  Traffic Signal Adjustment Recommendations (By Priority)
                 </h2>
                 <ul
                   style={{
@@ -235,18 +235,17 @@ export default function TrafficPage() {
                     lineHeight: "1.75rem",
                   }}
                 >
-                  <li>
-                    LANE 1: <strong>{result.north}</strong> seconds
-                  </li>
-                  <li>
-                    LANE 2: <strong>{result.south}</strong> seconds
-                  </li>
-                  <li>
-                    LANE 3: <strong>{result.west}</strong> seconds
-                  </li>
-                  <li>
-                    LANE 4: <strong>{result.east}</strong> seconds
-                  </li>
+                  {Object.entries(result)
+                    .sort((a, b) => b[1].green_time - a[1].green_time) // Sort by green time descending
+                    .map(([lane, { green_time, message }], index) => (
+                      <li key={lane}>
+                        PRIORITY {index + 1} - {lane.toUpperCase()} LANE:{" "}
+                        <strong>{green_time}</strong> seconds
+                        {message && (
+                          <span style={{ color: "red", fontWeight: "bold" }}> ({message})</span>
+                        )}
+                      </li>
+                    ))}
                 </ul>
               </div>
             )}
